@@ -103,6 +103,15 @@ contract FlightSuretyApp {
         //return true;  // Modify to call data contract's status
     }
 
+    //Testing regAirlines method for argument issue
+    function regAirlines()
+                            public
+                            returns(bool)
+    {
+        return false;
+        //return true;  // Modify to call data contract's status
+    }
+
     function setOperatingStatus(bool _mode)
                                             public
                                             requireContractOwner {
@@ -209,6 +218,8 @@ contract FlightSuretyApp {
     {
 
     }
+
+
 
     function isAirline(
         address passinAirline
@@ -438,10 +449,10 @@ contract FlightSuretyApp {
 }
 //Interface contract
 contract FlightSuretyData {
-    function _getRegisteredAirlinesNum() external view returns (uint256);
+    function _getRegisteredAirlinesNum() external returns(uint number);
     function isOperational() public view returns(bool);
-    function setOperatingStatus (bool mode) external {}
-    function registerAirline(address airlineAddress, bool registered) external{}
+    function setOperatingStatus (bool mode) external;
+    function registerAirline(address airlineAddress, bool registered) external;
 
     function isPaid(address airlineAddress)  returns (bool);
     function isRegistered(address airlineAddress) returns (bool);
@@ -449,6 +460,6 @@ contract FlightSuretyData {
     function noOfVotes(address airlineAddress) returns (uint8);
     function fund () public payable {}
     function getBalance() public view returns (uint256);
-    function setFund (address airlineAddress, bool isFund) external {}
+    function setFund (address airlineAddress, bool isFund) external ;
     function() external payable;
 }

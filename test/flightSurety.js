@@ -121,39 +121,10 @@ contract('Flight Surety Tests', async (accounts) => {
 
   it('Multi consensus testing  ', async () => {
 
-
-    let newAirline3 = accounts[3];
-    let newAirline4 = accounts[4];
-    let newAirline5 = accounts[5];
-    let newAirline6 = accounts[6];
-    let newAirline7 = accounts[7];
-    let newAirline8 = accounts[8];
-    let result = await config.flightSuretyData._getRegisteredAirlinesNum() ;
-    console.log("No of registered airlines =  " + result);
-    // ACT
-    try {
-
-      //funded airline can register 4 airlines
-      await config.flightSuretyApp.registerAirline(newAirline3, {from: config.firstAirline});
-
-    //  await config.flightSuretyApp.registerAirline(newAirline4, {from: config.firstAirline});
-   //   await config.flightSuretyApp.registerAirline(newAirline5, {from: config.firstAirline});
-    //  await config.flightSuretyApp.registerAirline(newAirline6, {from: config.firstAirline});
-
-    }
-    catch(e) {
-      console.log("error in funding an Airline ",e)
-    }
-
-    let result1 = await config.flightSuretyData.isRegistered.call( accounts[1]);
-    let result2 = await config.flightSuretyData.isRegistered.call( accounts[2]);
-    let result3 = await config.flightSuretyData.isRegistered.call(newAirline3);
-    let result4 = await config.flightSuretyData.isRegistered.call(newAirline4);
-    let result5 = await config.flightSuretyData.isRegistered.call(newAirline5);
-    let result6 = await config.flightSuretyData.isRegistered.call(newAirline6);
-    console.log("Is new airline registered? = " + result1+ " " +result2 + " "+result3 + " " + result4 + " " + result5 + " " + result6);
-
-
+      let result = await config.flightSuretyApp.isOperational.call();
+      console.log("Is operational = "+result);
+      result = await config.flightSuretyApp.regAirlines.call();
+      console.log("Is regAirlines = "+result);
   });
 
 });

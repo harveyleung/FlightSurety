@@ -187,18 +187,26 @@ contract FlightSuretyData {
     function _getRegisteredAirlinesNum()
     external
     view
-    returns(uint256)
+   // requireIsOperational
+    returns
+    (
+        uint256 number
+    )
     {
-        return airlineArray.length;
-
+        //Get the number of airlines registered
+        number = airlineArray.length;
+        return number;
+       // number = 100;
+       // return number;
     }
 
 
-   /**
-    * @dev Add an airline to the registration queue
-    *      Can only be called from FlightSuretyApp contract
-    *
-    */   
+
+    /**
+     * @dev Add an airline to the registration queue
+     *      Can only be called from FlightSuretyApp contract
+     *
+     */
     function registerAirline
                             (
                                 address passinAirline,
