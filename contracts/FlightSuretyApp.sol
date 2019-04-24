@@ -1,4 +1,4 @@
-pragma solidity ^0.4.25;
+pragma solidity ^0.4.24;
 
 // It's important to avoid vulnerabilities due to numeric overflow bugs
 // OpenZeppelin's SafeMath library, when used correctly, protects agains such bugs
@@ -24,6 +24,7 @@ contract FlightSuretyApp {
     uint8 private constant STATUS_CODE_LATE_TECHNICAL = 40;
     uint8 private constant STATUS_CODE_LATE_OTHER = 50;
 
+    uint256 private constant INSURANCE_MAX_AMOUNT = 1 ether;
 
     address private contractOwner;          // Account used to deploy contract
 
@@ -103,19 +104,27 @@ contract FlightSuretyApp {
         //return true;  // Modify to call data contract's status
     }
 
-    //Testing regAirlines method for argument issue
-    function regAirlines()
-                            public
-                            returns(bool)
-    {
-        return false;
-        //return true;  // Modify to call data contract's status
-    }
+
 
     function setOperatingStatus(bool _mode)
                                             public
                                             requireContractOwner {
         dataContract.setOperatingStatus(_mode);
+    }
+    /*
+    * Testing method only, no need to copy.
+    */
+    function getVotes(address passinAddress) public returns (uint256)
+    {
+        return  airlineVotes[passinAddress].length;
+    }
+    /**Testing method only, no need to copy.
+    */
+    function getPrecentage(address passinAddress) public returns (uint256)
+    {
+     uint256 noOfRegAirlines = dataContract._getRegisteredAirlinesNum();
+      // return ( airlineVotes[passinAddress].length.div(noOfRegAirlines).mul(100));
+        return (( airlineVotes[passinAddress].length).mul(100).div(noOfRegAirlines));
     }
 
 
@@ -135,6 +144,7 @@ contract FlightSuretyApp {
                             external
 
                             returns(bool success, uint256 votes)
+                           // returns(uint256 number)
     {
         // check if msg.sender is registered?
         require(dataContract.isRegistered(msg.sender), 'Only registered airline can register ' );
@@ -146,7 +156,7 @@ contract FlightSuretyApp {
         //Check if passinAirline is not paid?
         require(!dataContract.isPaid(passinAirline), 'Only paid airline can register another airline');
 
-        if(dataContract._getRegisteredAirlinesNum() < 5) {
+        if(dataContract._getRegisteredAirlinesNum() < 4) {
             //registerAirline, register = true
             dataContract.registerAirline(passinAirline, true);
 
@@ -172,17 +182,19 @@ contract FlightSuretyApp {
 
                 //check if over 50% (no of votes/ no of registered Airlines)
                 uint256 noOfRegAirlines = dataContract._getRegisteredAirlinesNum();
-                if (airlineVotes[passinAirline].length.div(noOfRegAirlines).mul(100) >= 50  ) {
+                if (airlineVotes[passinAirline].length.mul(100).div(noOfRegAirlines) >= 50  ) {
 
                     //airlines[newAirline].isRegistered = true;
                     //if yes, registered
-                    dataContract.registerAirline(passinAirline,false);
+                    dataContract.registerAirline(passinAirline,true);
                 }
 
             }
 
         }
         return (success, airlineVotes[passinAirline].length);
+//        number =  airlineVotes[passinAirline].length;
+//        return number;
     }
 
     /** Fund airline to data contract, change it's status too
@@ -205,17 +217,36 @@ contract FlightSuretyApp {
         dataContract.setFund(msg.sender,true);
     }
 
+    /**
+     * get insureebalance
+    */
+    function insureeBalance() external view
+        requireIsOperational
+    returns (uint256)
+    {
+        return dataContract.insureeBalance(msg.sender);
+    }
+
+
    /**
     * @dev Register a future flight for insuring.
     *
     */
     function registerFlight
                                 (
+                                    address airline,
+                                    string flightCode,
+                                    uint256 timestamp
                                 )
                                 external
-                                pure
+                                payable
 
     {
+
+        //Do not allow more than 1 ether insurance
+        require(msg.value <= INSURANCE_MAX_AMOUNT, "Maximum insurance amount exceeded");
+        address(dataContract).transfer(msg.value);
+        dataContract.buy(msg.sender, airline, flightCode, timestamp, msg.value);
 
     }
 
@@ -241,15 +272,29 @@ contract FlightSuretyApp {
     function processFlightStatus
                                 (
                                     address airline,
-                                    string memory flight,
+                                    string memory flightCode,
                                     uint256 timestamp,
                                     uint8 statusCode
                                 )
                                 internal
-                                pure
+                                requireIsOperational
     {
         //Run creditissurance from datacontract when status code = 20
+        if (statusCode == STATUS_CODE_LATE_AIRLINE) {
+            dataContract.creditInsurees(airline, flightCode, timestamp);
+        }
     }
+
+    /*
+    */
+
+    function makeWithdrawal()
+    external
+    requireIsOperational
+    {
+        dataContract.pay(msg.sender);
+    }
+
 
 
     // Generate a request for oracles to fetch flight information
@@ -460,6 +505,12 @@ contract FlightSuretyData {
     function noOfVotes(address airlineAddress) returns (uint8);
     function fund () public payable {}
     function getBalance() public view returns (uint256);
+
+    function buy(address sender, address airline, string flightCode, uint256 timestamp, uint256 amount) external;
+    function insureeBalance(address sender) external returns (uint256);
+    function creditInsurees(address airline, string flightCode, uint256 timestamp) external;
+    function pay(address sender) external;
+
     function setFund (address airlineAddress, bool isFund) external ;
     function() external payable;
 }

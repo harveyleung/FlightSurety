@@ -1,4 +1,4 @@
-pragma solidity ^0.4.25;
+pragma solidity ^0.4.24;
 
 import "../node_modules/openzeppelin-solidity/contracts/math/SafeMath.sol";
 
@@ -24,17 +24,22 @@ contract FlightSuretyData {
     mapping (address=> Airline) private airlines; //Registered airlines
     address[] private airlineArray; //Array of airline addresses
 
-    struct Flight{             //Airline structure
-        bool ed;
-        uint8 statusCode;
-        uint256 updatedTimestamp;
-        address airline;
-        string id;
-        bool hasBeenInsured;
+    //struct of data for each insured passenger
+    struct FlightInsurance {
+        bool isInsured;// is passenger insured
+        bool isCredited;//used to determine if the passenger was payed(avoid multiple payments)
+        uint256 amount;//amount passenger is insured
     }
-    //mapping (string => Flight) private registeredFlights;
-    //mapping of flight -> passengers[]
-    //mapping of key(flight+passenger) -> value (insurance)
+
+    //What will be payble to each insured passenger (or what was payed?)
+    mapping(address => uint256) private insureeBalances;
+
+    //Insurance details of each passenger (all flights)
+    mapping(bytes32 => FlightInsurance) private flightInsurances;
+
+    //List of insured passengers per flight
+    mapping(bytes32 => address[]) private insureesMap;
+
 
     /********************************************************************************************/
     /*                                       EVENT DEFINITIONS                                  */
@@ -94,6 +99,11 @@ contract FlightSuretyData {
         _;
     }
 
+    modifier requireFlightNotInsured(address sender, address airline, string flightCode, uint256 timestamp){
+        require(!isFlightInsured(sender, airline, flightCode, timestamp), "Passenger is already insured");
+        _;
+    }
+
     /*
     * Let contract owner to add authorize contract here
     */
@@ -125,6 +135,13 @@ contract FlightSuretyData {
     }
 
 
+    function isFlightInsured(address sender, address airline, string flightCode, uint256 timestamp) public view
+    returns (bool)
+    {
+        FlightInsurance storage insurance = flightInsurances[getKey(sender, airline, flightCode, timestamp)];
+        return insurance.isInsured;
+    }
+
     /********************************************************************************************/
     /*                                       UTILITY FUNCTIONS                                  */
     /********************************************************************************************/
@@ -155,7 +172,7 @@ contract FlightSuretyData {
     *
     * @return A bool that is the current operating status
     */      
-    function isOperational() 
+    function isOperational()
                             public 
                             view 
                             returns(bool) 
@@ -218,7 +235,7 @@ contract FlightSuretyData {
 
     {
         //If not exists, add a new one to the list
-        if(airlines[passinAirline].exists){
+        if(!airlines[passinAirline].exists){
             airlines[passinAirline] = Airline({
                 registered : registered,
                 feePaid: false,
@@ -227,7 +244,7 @@ contract FlightSuretyData {
             });
             airlineArray.push(passinAirline);
         } else{
-            //already registered,
+            //already exists,
             if(registered)
                 airlines[passinAirline].registered = true;
         }
@@ -244,6 +261,16 @@ contract FlightSuretyData {
     {
         airlines[passinAirline].feePaid = true;
     }
+
+    function insureeBalance (address sender) external
+        requireIsOperational
+        //requireIsCallerAuthorized
+            view
+        returns (uint256)
+    {
+        return insureeBalances[sender];
+    }
+
 
 
 
@@ -263,34 +290,67 @@ contract FlightSuretyData {
     }
 
 
-   /**
-    * @dev Buy insurance for a flight
-    *
-    */   
     function buy
-                            (                             
-                            )
-                            external
-                            payable
+    (
+        address sender,
+        address airline,
+        string flightCode,
+        uint256 timestamp,
+        uint256 insuranceAmount
+    )
+    external
+    requireIsOperational
+   // requireIsCallerAuthorized
+    requireFlightNotInsured(sender, airline, flightCode, timestamp)
     {
-            //Check if msg.value <1
-            //Only can less than 1
+        FlightInsurance storage flInsurance = flightInsurances[getKey(sender, airline, flightCode, timestamp)];
+        flInsurance.isInsured = true;
+        flInsurance.amount = insuranceAmount;
+
+        saveInsuree(sender, airline, flightCode, timestamp);
+    }
+
+    function saveInsuree(address sender, address airline, string flightCode, uint256 timestamp) internal requireIsOperational {
+        address [] storage insurees = insureesMap[getKey(address(0), airline, flightCode, timestamp)];
+        bool insureeExists = false;
+
+        for(uint256 i = 0; i < insurees.length; i++) {
+            if(insurees[i] == sender) {
+                insureeExists = true;
+                break;
+            }
+        }
+
+        if(!insureeExists) {
+            insurees.push(sender);
+        }
     }
 
     /**
      *  @dev Credits payouts to insurees
     */
     function creditInsurees
-                                (
-                                //flight no
-                                )
-                                external
-                                pure
+    (
+        address airline,
+        string flightCode,
+        uint256 timestamp
+    )
+    external
+    requireIsOperational
+   // requireIsCallerAuthorized
     {
-        //This method will get the particular flight from the array and try to calculate all passengers (buy)
-        // credits x 1.5
+        address [] storage insurees = insureesMap[getKey(address(0), airline, flightCode, timestamp)];
 
-        //mark the flight isured status => true
+        for(uint i = 0; i < insurees.length; i++) {
+            FlightInsurance storage insurance = flightInsurances[getKey(insurees[i], airline, flightCode, timestamp)];
+
+            //Verify the passenger was not previously credited before
+            // his payment amount is increased by 1.5x
+            if(insurance.isInsured && !insurance.isCredited) {
+                insurance.isCredited = true;
+                insureeBalances[insurees[i]] = insureeBalances[insurees[i]].add(insurance.amount.div(10).mul(15));
+            }
+        }
     }
     
 
@@ -298,14 +358,16 @@ contract FlightSuretyData {
      *  @dev Transfers eligible payout funds to insuree
      *
     */
-    function pay
-                            (
-                            //passenger address
-                            )
-                            external
-                            pure
+    function pay (address sender) external
+    requireIsOperational
+    //requireIsCallerAuthorized
     {
-        //withdraw the credit to passenger by the amount calculated in creditInsurees()
+        //Fail fast if contract has no funds
+        require(address(this).balance >= insureeBalances[sender], "Error: Not enought funds in contract");
+        //Continue with withdrawl
+        uint256 tmp = insureeBalances[sender];
+        insureeBalances[sender] = 0;
+        sender.transfer(tmp);
 
     }
 
@@ -328,6 +390,15 @@ contract FlightSuretyData {
 
     function getBalance() public view returns (uint256) {
         return address(this).balance;
+    }
+
+    function getKey(
+        address insuree,
+        address airline,
+        string memory flight,
+        uint256 timestamp
+    ) pure internal returns(bytes32){
+        return keccak256(abi.encodePacked(insuree, airline, flight, timestamp));
     }
 
 
